@@ -5,6 +5,9 @@ from sys import stdout
 import argparse
 import time
 
+big_data = []
+big_data_size = 0
+
 DCM_SERVICE_NAMES = {
     0x10: "DIAGNOSTIC_SESSION_CONTROL",
     0x11: "ECU_RESET",
