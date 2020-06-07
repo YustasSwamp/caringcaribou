@@ -15,10 +15,13 @@ if version_info[0] == 2:
     range = xrange
 
 UDS_SERVICE_NAMES = {
+    0x04: "CLEAR_DIAGNOSTIC_INFORMATION",
     0x10: "DIAGNOSTIC_SESSION_CONTROL",
     0x11: "ECU_RESET",
+    0x12: "GMLAN_READ_FAILURE_RECORD",
     0x14: "CLEAR_DIAGNOSTIC_INFORMATION",
     0x19: "READ_DTC_INFORMATION",
+    0x1A: "GMLAN_READ_DIAGNOSTIC_ID",
     0x20: "RETURN_TO_NORMAL",
     0x22: "READ_DATA_BY_IDENTIFIER",
     0x23: "READ_MEMORY_BY_ADDRESS",
@@ -36,6 +39,7 @@ UDS_SERVICE_NAMES = {
     0x36: "TRANSFER_DATA",
     0x37: "REQUEST_TRANSFER_EXIT",
     0x38: "REQUEST_FILE_TRANSFER",
+    0x3B: "GMLAN_WRITE_DID",
     0x3D: "WRITE_MEMORY_BY_ADDRESS",
     0x3E: "TESTER_PRESENT",
     0x7F: "NEGATIVE_RESPONSE",
@@ -43,8 +47,23 @@ UDS_SERVICE_NAMES = {
     0x84: "SECURED_DATA_TRANSMISSION",
     0x85: "CONTROL_DTC_SETTING",
     0x86: "RESPONSE_ON_EVENT",
-    0x87: "LINK_CONTROL"
+    0x87: "LINK_CONTROL",
+    0xA2: "GMLAN_REPORT_PROGRAMMING_STATE",
+    0xA5: "GMLAN_ENTER_PROGRAMMING_MODE",
+    0xA9: "GMLAN_CHECK_CODES",
+    0xAA: "GMLAN_READ_DPID",
+    0xAE: "GMLAN_DEVICE_CONTROL"
 }
+
+
+#negativeResponseCodes = {
+#    0x81: 'SchedulerFull',
+#    0x83: 'VoltageOutOfRange',
+#    0x85: 'GeneralProgrammingFailure',
+#    0x89: 'DeviceTypeError',
+#    0x99: 'ReadyForDownload-DTCStored',
+#    0xe3: 'DeviceControlLimitsExceeded',
+#}
 
 NRC_NAMES = {
     0x00: "POSITIVE_RESPONSE",
@@ -88,6 +107,91 @@ NRC_NAMES = {
     0x91: "TORQUE_CONVERTER_CLUTCH_LOCKED",
     0x92: "VOLTAGE_TOO_HIGH",
     0x93: "VOLTAGE_TOO_LOW"
+}
+
+DIAG_IDS = {
+        0x90: "$90: VehicleIdentificationNumber (VIN)",
+        0x92: "$92: SystemSupplierId (SYSSUPPID)",
+        0x97: "$97: SystemNameOrEngineType (SNOET)",
+        0x98: "$98: RepairShopCodeOrTesterSerialNumber (RSCOTSN)",
+        0x99: "$99: ProgrammingDate (PD)",
+        0x9a: "$9a: DiagnosticDataIdentifier (DDI)",
+        0x9b: "$9b: XmlConfigurationCompatibilityIdentifier (XMLCCID)",
+        0x9C: "$9C: XmlDataFilePartNumber (XMLDFPN)",
+        0x9D: "$9D: XmlDataFileAlphaCode (XMLDFAC)",
+        0x9F: "$9F: PreviousStoredRepairShopCodeOrTesterSerialNumbers "
+              "(PSRSCOTSN)",
+        0xA0: "$A0: manufacturers_enable_counter (MEC)",
+        0xA1: "$A1: ECUConfigurationOrCustomizationData (ECUCOCGD) 1",
+        0xA2: "$A2: ECUConfigurationOrCustomizationData (ECUCOCGD) 2",
+        0xA3: "$A3: ECUConfigurationOrCustomizationData (ECUCOCGD) 3",
+        0xA4: "$A4: ECUConfigurationOrCustomizationData (ECUCOCGD) 4",
+        0xA5: "$A5: ECUConfigurationOrCustomizationData (ECUCOCGD) 5",
+        0xA6: "$A6: ECUConfigurationOrCustomizationData (ECUCOCGD) 6",
+        0xA7: "$A7: ECUConfigurationOrCustomizationData (ECUCOCGD) 7",
+        0xA8: "$A8: ECUConfigurationOrCustomizationData (ECUCOCGD) 8",
+        0xB0: "$B0: ECUDiagnosticAddress (ECUADDR)",
+        0xB1: "$B1: ECUFunctionalSystemsAndVirtualDevices (ECUFSAVD)",
+        0xB2: "$B2: GM ManufacturingData (GMMD)",
+        0xB3: "$B3: Data Universal Numbering System Identification (DUNS)",
+        0xB4: "$B4: Manufacturing Traceability Characters (MTC)",
+        0xB5: "$B5: GM BroadcastCode (GMBC)",
+        0xB6: "$B6: GM Target Vehicle (GMTV)",
+        0xB7: "$B7: GM Software Usage Description (GMSUD)",
+        0xB8: "$B8: GM Bench Verification Information (GMBVI)",
+        0xB9: "$B9: Subnet_Config_List_HighSpeed (SCLHS)",
+        0xBA: "$BA: Subnet_Config_List_LowSpeed (SCLLS)",
+        0xBB: "$BB: Subnet_Config_List_MidSpeed (SCLMS)",
+        0xBC: "$BC: Subnet_Config_List_NonCan 1 (SCLNC 1)",
+        0xBD: "$BD: Subnet_Config_List_NonCan 2 (SCLNC 2)",
+        0xBE: "$BE: Subnet_Config_List_LIN (SCLLIN)",
+        0xBF: "$BF: Subnet_Config_List_GMLANChassisExpansionBus (SCLGCEB)",
+        0xC0: "$C0: BootSoftwarePartNumber (BSPN)",
+        0xC1: "$C1: SoftwareModuleIdentifier (SWMI) 01",
+        0xC2: "$C2: SoftwareModuleIdentifier (SWMI) 02",
+        0xC3: "$C3: SoftwareModuleIdentifier (SWMI) 03",
+        0xC4: "$C4: SoftwareModuleIdentifier (SWMI) 04",
+        0xC5: "$C5: SoftwareModuleIdentifier (SWMI) 05",
+        0xC6: "$C6: SoftwareModuleIdentifier (SWMI) 06",
+        0xC7: "$C7: SoftwareModuleIdentifier (SWMI) 07",
+        0xC8: "$C8: SoftwareModuleIdentifier (SWMI) 08",
+        0xC9: "$C9: SoftwareModuleIdentifier (SWMI) 09",
+        0xCA: "$CA: SoftwareModuleIdentifier (SWMI) 10",
+        0xCB: "$CB: EndModelPartNumber",
+        0xCC: "$CC: BaseModelPartNumber (BMPN)",
+        0xD0: "$D0: BootSoftwarePartNumberAlphaCode",
+        0xD1: "$D1: SoftwareModuleIdentifierAlphaCode (SWMIAC) 01",
+        0xD2: "$D2: SoftwareModuleIdentifierAlphaCode (SWMIAC) 02",
+        0xD3: "$D3: SoftwareModuleIdentifierAlphaCode (SWMIAC) 03",
+        0xD4: "$D4: SoftwareModuleIdentifierAlphaCode (SWMIAC) 04",
+        0xD5: "$D5: SoftwareModuleIdentifierAlphaCode (SWMIAC) 05",
+        0xD6: "$D6: SoftwareModuleIdentifierAlphaCode (SWMIAC) 06",
+        0xD7: "$D7: SoftwareModuleIdentifierAlphaCode (SWMIAC) 07",
+        0xD8: "$D8: SoftwareModuleIdentifierAlphaCode (SWMIAC) 08",
+        0xD9: "$D9: SoftwareModuleIdentifierAlphaCode (SWMIAC) 09",
+        0xDA: "$DA: SoftwareModuleIdentifierAlphaCode (SWMIAC) 10",
+        0xDB: "$DB: EndModelPartNumberAlphaCode",
+        0xDC: "$DC: BaseModelPartNumberAlphaCode",
+        0xDD: "$DD: SoftwareModuleIdentifierDataIdentifiers (SWMIDID)",
+        0xDE: "$DE: GMLANIdentificationData (GMLANID)",
+        0xDF: "$DF: ECUOdometerValue (ECUODO)",
+        0xE0: "$E0: VehicleLevelDataRecord (VLDR) 0",
+        0xE1: "$E1: VehicleLevelDataRecord (VLDR) 1",
+        0xE2: "$E2: VehicleLevelDataRecord (VLDR) 2",
+        0xE3: "$E3: VehicleLevelDataRecord (VLDR) 3",
+        0xE4: "$E4: VehicleLevelDataRecord (VLDR) 4",
+        0xE5: "$E5: VehicleLevelDataRecord (VLDR) 5",
+        0xE6: "$E6: VehicleLevelDataRecord (VLDR) 6",
+        0xE7: "$E7: VehicleLevelDataRecord (VLDR) 7",
+        0xE8: "$E8: Subnet_Config_List_GMLANPowertrainExpansionBus (SCLGPEB)",
+        0xE9: "$E9: Subnet_Config_List_GMLANFrontObjectExpansionBus "
+              "(SCLGFOEB)",
+        0xEA: "$EA: Subnet_Config_List_GMLANRearObjectExpansionBus (SCLGROEB)",
+        0xEB: "$EB: Subnet_Config_List_GMLANExpansionBus1 (SCLGEB1)",
+        0xEC: "$EC: Subnet_Config_List_GMLANExpansionBus2 (SCLGEB2)",
+        0xED: "$ED: Subnet_Config_List_GMLANExpansionBus3 (SCLGEB3)",
+        0xEE: "$EE: Subnet_Config_List_GMLANExpansionBus4 (SCLGEB4)",
+        0xEF: "$EF: Subnet_Config_List_GMLANExpansionBus5 (SCLGEB5)"
 }
 
 DELAY_DISCOVERY = 0.01
@@ -699,6 +803,74 @@ def send_key(arb_id_request, arb_id_response, level, key, timeout):
             return response
 
 
+def service_1a(args):
+    """
+    Read all Diagnostic IDs.
+
+    :param args: A namespace containing src, dst
+    """
+    send_arb_id = args.src
+    rcv_arb_id = args.dst
+
+    found_dids = []
+    print_results = False
+    timeout = 1
+
+    with IsoTp(arb_id_request=send_arb_id,
+               arb_id_response=rcv_arb_id) as tp:
+        # Setup filter for incoming messages
+        tp.set_filter_single_arbitration_id(rcv_arb_id)
+        # Send requests
+        with Iso14229_1(tp) as uds:
+            for did in range(BYTE_MIN, BYTE_MAX):
+                if print_results:
+                    print("\rProbing did 0x{0:02x} ({0}/{1}): found {2}"
+                          .format(did, BYTE_MAX, len(found_dids)),
+                          end="")
+                request = [0x1a, did]
+                uds.send_request(request)
+                response = uds.receive_response(timeout)
+                if not Iso14229_1.is_positive_response(response):
+                    continue
+                value=''.join('{:02x}'.format(x) for x in response[2:])
+                text=''.join(map(chr,response[2:]))
+                valuestr=''.join([i if ord(i) > 20 and ord(i) < 128 else '.' for i in text])
+                if did in DIAG_IDS:
+                    d = DIAG_IDS[did]
+                else:
+                    d = "{0:2x}".format(did)
+                print("{0}: {1} '{2}'".format(d, value, valuestr))
+            if print_results:
+                print("\nDone!\n")
+
+
+def service_27(args):
+    """
+    Security access mode.
+
+    :param args: A namespace containing src, dst
+    """
+    send_arb_id = args.src
+    rcv_arb_id = args.dst
+    timeout = 1
+    # Request seed
+    response = request_seed(send_arb_id, rcv_arb_id, 1, None, timeout)
+    if Iso14229_1.is_positive_response(response):
+        if response[0] == 0x67 and response[1] == 0x01:
+            print("Seed: {0}".format(list_to_hex_str(response[2:], "")))
+            if args.key != -1:
+                print("Key to send {0:04x}".format(args.key))
+                key = [(args.key >> 8) & 0xff, args.key & 0xff]
+                response = send_key(send_arb_id, rcv_arb_id, 2, key, timeout)
+                if Iso14229_1.is_positive_response(response):
+                    print("Security access granted!")
+                else:
+                    print_negative_response(response)
+    else:
+        # Negative response handling
+        print_negative_response(response)
+
+
 def __parse_args(args):
     """Parser for module arguments"""
     parser = argparse.ArgumentParser(
@@ -713,7 +885,9 @@ def __parse_args(args):
   cc.py uds services 0x733 0x633
   cc.py uds ecu_reset 1 0x733 0x633
   cc.py uds testerpresent 0x733
-  cc.py uds security_seed 0x3 0x1 0x733 0x633 -r 1 -d 0.5""")
+  cc.py uds security_seed 0x3 0x1 0x733 0x633 -r 1 -d 0.5
+  cc.py uds service_1a 0x733 0x633
+  cc.py uds service_27 0x733 0x633 -key 0x1234""")
     subparsers = parser.add_subparsers(dest="module_function")
     subparsers.required = True
 
@@ -843,6 +1017,19 @@ def __parse_args(args):
                                      "A '0' is interpreted as infinity. "
                                      "(default: 0)")
     parser_secseed.set_defaults(func=__security_seed_wrapper)
+
+    # Parser for Service $1A
+    parser_1a = subparsers.add_parser("service_1a")
+    parser_1a.add_argument("src", type=parse_int_dec_or_hex, help="arbitration ID to transmit from")
+    parser_1a.add_argument("dst", type=parse_int_dec_or_hex, help="arbitration ID to listen to")
+    parser_1a.set_defaults(func=service_1a)
+
+    # Parser for Service $27
+    parser_27 = subparsers.add_parser("service_27")
+    parser_27.add_argument("src", type=parse_int_dec_or_hex, help="arbitration ID to transmit from")
+    parser_27.add_argument("dst", type=parse_int_dec_or_hex, help="arbitration ID to listen to")
+    parser_27.add_argument("-key", type=parse_int_dec_or_hex, default=-1, help="key to respond")
+    parser_27.set_defaults(func=service_27)
 
     args = parser.parse_args(args)
     return args
