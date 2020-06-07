@@ -459,8 +459,9 @@ def service_discovery(arb_id_request, arb_id_response, timeout,
                     if (status !=
                        NegativeResponseCodes.SERVICE_NOT_SUPPORTED):
                         # Any other response than "service not supported"
-                        # counts
-                        found_services.append(service_id)
+                        # counts. But filter out the garbage
+                        if service_id != 0 and service_id != 0xff:
+                            found_services.append(service_id)
             if print_results:
                 print("\nDone!\n")
         except KeyboardInterrupt:
@@ -843,6 +844,32 @@ def service_1a(args):
             if print_results:
                 print("\nDone!\n")
 
+def service_23(args):
+    """
+    Read memory by address.
+
+    :param args: A namespace containing src, dst
+    """
+    send_arb_id = args.src
+    rcv_arb_id = args.dst
+    addr = args.addr
+    length = args.len
+
+    timeout = 1
+
+    with IsoTp(arb_id_request=send_arb_id,
+               arb_id_response=rcv_arb_id) as tp:
+        # Setup filter for incoming messages
+        tp.set_filter_single_arbitration_id(rcv_arb_id)
+        # Send requests
+        with Iso14229_1(tp) as uds:
+                request = [0x23, (addr >> 16) & 0xff, (addr >> 8) & 0xff, addr & 0xff, (length >> 8) & 0xff, length & 0xff]
+                uds.send_request(request)
+                response = uds.receive_response(timeout)
+                if Iso14229_1.is_positive_response(response):
+                    print("response: {0}".format(list_to_hex_str(response, " ")))
+                else:
+                    print_negative_response(response)
 
 def service_27(args):
     """
@@ -887,6 +914,7 @@ def __parse_args(args):
   cc.py uds testerpresent 0x733
   cc.py uds security_seed 0x3 0x1 0x733 0x633 -r 1 -d 0.5
   cc.py uds service_1a 0x733 0x633
+  cc.py uds service_23 0x733 0x633 0x000000 0x0100
   cc.py uds service_27 0x733 0x633 -key 0x1234""")
     subparsers = parser.add_subparsers(dest="module_function")
     subparsers.required = True
@@ -1023,6 +1051,14 @@ def __parse_args(args):
     parser_1a.add_argument("src", type=parse_int_dec_or_hex, help="arbitration ID to transmit from")
     parser_1a.add_argument("dst", type=parse_int_dec_or_hex, help="arbitration ID to listen to")
     parser_1a.set_defaults(func=service_1a)
+
+    # Parser for Service $23
+    parser_23 = subparsers.add_parser("service_23")
+    parser_23.add_argument("src", type=parse_int_dec_or_hex, help="arbitration ID to transmit from")
+    parser_23.add_argument("dst", type=parse_int_dec_or_hex, help="arbitration ID to listen to")
+    parser_23.add_argument("addr", type=parse_int_dec_or_hex, help="memory address to read")
+    parser_23.add_argument("len", type=parse_int_dec_or_hex, help="memory size to read")
+    parser_23.set_defaults(func=service_23)
 
     # Parser for Service $27
     parser_27 = subparsers.add_parser("service_27")
