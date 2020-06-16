@@ -419,7 +419,7 @@ def __uds_discovery_wrapper(args):
         print("Discovery failed: {0}".format(e))
 
 
-def service_discovery(arb_id_request, arb_id_response, timeout,
+def service_discovery(arb_id_request, arb_id_response, timeout=TIMEOUT_SERVICES,
                       min_id=BYTE_MIN, max_id=BYTE_MAX, print_results=True):
     """Scans for supported UDS services on the specified arbitration ID.
        Returns a list of found service IDs.
