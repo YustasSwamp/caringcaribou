@@ -15,7 +15,16 @@ if version_info[0] == 2:
     range = xrange
 
 UDS_SERVICE_NAMES = {
+    0x01: "CURRENT_POWERTRAIN_DIAGNOSTIC_DATA",
+    0x02: "POWERTRAIN_FREEZE_FRAME_DATA",
+    0x03: "EMISSION_RELATED_DTC",
     0x04: "CLEAR_DIAGNOSTIC_INFORMATION",
+    0x05: "OXYGEN_SENSOR_MONITORING_TEST_RESULTS",
+    0x06: "ON_BOARD_MONITORING_TEST_RESULTS",
+    0x07: "EMISSION_RELATED_DTC_LAST",
+    0x08: "CONTROL_ON_BOARD_SYSTEM_OR_TEST",
+    0x09: "VEHICLE_INFORMATION",
+    0x0A: "EMISSION_RELATED_DTC_PERMANENT",
     0x10: "DIAGNOSTIC_SESSION_CONTROL",
     0x11: "ECU_RESET",
     0x12: "GMLAN_READ_FAILURE_RECORD",
@@ -208,8 +217,8 @@ BYTE_MIN = 0x00
 BYTE_MAX = 0xFF
 
 
-def uds_discovery(min_id, max_id, blacklist_args, auto_blacklist_duration,
-                  delay, verify, print_results=True):
+def uds_discovery(min_id, max_id, blacklist_args=[], auto_blacklist_duration=0,
+                  delay=DELAY_DISCOVERY, verify=False, print_results=True):
     """Scans for diagnostics support by brute forcing session control
         messages to different arbitration IDs.
 
@@ -439,6 +448,12 @@ def service_discovery(arb_id_request, arb_id_response, timeout,
         # Send requests
         try:
             for service_id in range(min_id, max_id + 1):
+                # Skip responce ids (non service request)
+                if service_id in range(0x40, 0x80):
+                    continue
+                # Skip GMLAN enhanced diagnostic responce ids
+                if service_id in range(0xc0, 0x100):
+                    continue
                 tp.send_request([service_id])
                 if print_results:
                     print("\rProbing service 0x{0:02x} ({0}/{1}): found {2}"
@@ -447,21 +462,23 @@ def service_discovery(arb_id_request, arb_id_response, timeout,
                 stdout.flush()
                 # Get response
                 msg = tp.bus.recv(timeout)
+                # Timeout? High chance service is there,
+                # just incomplete request
                 if msg is None:
-                    # No response received
+                    found_services.append(service_id)
                     continue
-                # Parse response
-                if len(msg.data) > 3:
-                    # Since service ID is included in the response, mapping
-                    # is correct even if response is delayed
-                    service_id = msg.data[2]
-                    status = msg.data[3]
-                    if (status !=
-                       NegativeResponseCodes.SERVICE_NOT_SUPPORTED):
-                        # Any other response than "service not supported"
-                        # counts. But filter out the garbage
-                        if service_id != 0 and service_id != 0xff:
-                            found_services.append(service_id)
+
+                response = list(msg.data[:4])
+                not_supported_response = [
+                    3,
+                    0x7f,
+                    service_id,
+                    NegativeResponseCodes.SERVICE_NOT_SUPPORTED]
+
+                if response == not_supported_response:
+                    continue
+
+                found_services.append(service_id)
             if print_results:
                 print("\nDone!\n")
         except KeyboardInterrupt:
@@ -485,8 +502,7 @@ def __service_discovery_wrapper(args):
               .format(service_id, service_name))
 
 
-def tester_present(arb_id_request, delay, duration,
-                   suppress_positive_response):
+def tester_present(arb_id_request, delay, duration):
     """Sends TesterPresent messages to 'arb_id_request'. Stops automatically
     after 'duration' seconds or runs forever if this is None.
 
@@ -494,20 +510,10 @@ def tester_present(arb_id_request, delay, duration,
     :param delay: seconds between each request
     :param duration: seconds before automatically stopping, or None to
                      continue forever
-    :param suppress_positive_response: whether positive responses should
-                                       be suppressed
     :type arb_id_request: int
     :type delay: float
     :type duration: float or None
-    :type suppress_positive_response: bool
     """
-    # SPR simply tells the recipient not to send a positive response to
-    # each TesterPresent message
-    if suppress_positive_response:
-        sub_function = 0x80
-    else:
-        sub_function = 0x00
-
     # Calculate end timestamp if the TesterPresent should automatically
     # stop after a given duration
     auto_stop = duration is not None
@@ -517,7 +523,7 @@ def tester_present(arb_id_request, delay, duration,
                     + datetime.timedelta(seconds=duration))
 
     service_id = Services.TesterPresent.service_id
-    message_data = [service_id, sub_function]
+    message_data = [service_id]
     print("Sending TesterPresent to arbitration ID {0} (0x{0:02x})"
           .format(arb_id_request))
     print("\nPress Ctrl+C to stop\n")
@@ -538,10 +544,8 @@ def __tester_present_wrapper(args):
     arb_id_request = args.src
     delay = args.delay
     duration = args.duration
-    suppress_positive_response = args.spr
 
-    tester_present(arb_id_request, delay, duration,
-                   suppress_positive_response)
+    tester_present(arb_id_request, delay, duration)
 
 
 def ecu_reset(arb_id_request, arb_id_response, reset_type, timeout):
@@ -863,13 +867,54 @@ def service_23(args):
         tp.set_filter_single_arbitration_id(rcv_arb_id)
         # Send requests
         with Iso14229_1(tp) as uds:
-                request = [0x23, (addr >> 16) & 0xff, (addr >> 8) & 0xff, addr & 0xff, (length >> 8) & 0xff, length & 0xff]
+                request = [0x23, (addr >> 24) & 0xff, (addr >> 16) & 0xff, (addr >> 8) & 0xff, addr & 0xff, (length >> 8) & 0xff, length & 0xff]
                 uds.send_request(request)
                 response = uds.receive_response(timeout)
                 if Iso14229_1.is_positive_response(response):
                     print("response: {0}".format(list_to_hex_str(response, " ")))
                 else:
                     print_negative_response(response)
+
+def read_memory(args):
+    """
+    Read memory by address.
+
+    :param args: A namespace containing src, dst
+    """
+    send_arb_id = args.src
+    rcv_arb_id = args.dst
+    filename = args.filename
+    size = args.size
+    addr = 0
+
+    timeout = 3
+
+    f= open(filename,"wb")
+    with IsoTp(arb_id_request=send_arb_id,
+               arb_id_response=rcv_arb_id) as tp:
+        # Setup filter for incoming messages
+        tp.set_filter_single_arbitration_id(rcv_arb_id)
+        # Send requests
+        with Iso14229_1(tp) as uds:
+            while addr < size:
+                n = 16 - (addr & 0xf)
+                request = [0x23, (addr >> 24) & 0xff, (addr >> 16) & 0xff, (addr >> 8) & 0xff, addr & 0xff, 0, n]
+                uds.send_request(request)
+                response = uds.receive_response(uds.P3_CLIENT)
+                if Iso14229_1.is_positive_response(response):
+                    if (addr & 0xff == 0):
+                        print("{0:x}".format(addr))
+                    ba=bytearray(response[5:])
+                    f.write(ba)
+                    addr = addr + len(ba)
+                else:
+                    if response != None:
+#                        if response[2] == NegativeResponseCodes.REQUEST_CORRECTLY_RECEIVED_RESPONSE_PENDING:
+#                            time.sleep(0.1)
+#                            continue
+                        print_negative_response(response)
+                    break
+    f.close()
 
 def service_27(args):
     """
@@ -882,7 +927,9 @@ def service_27(args):
     timeout = 1
     # Request seed
     response = request_seed(send_arb_id, rcv_arb_id, 1, None, timeout)
-    if Iso14229_1.is_positive_response(response):
+    if response is None:
+        print("Timeout")
+    elif Iso14229_1.is_positive_response(response):
         if response[0] == 0x67 and response[1] == 0x01:
             print("Seed: {0}".format(list_to_hex_str(response[2:], "")))
             if args.key != -1:
@@ -996,8 +1043,6 @@ def __parse_args(args):
     parser_tp.add_argument("-dur", "--duration", metavar="S",
                            type=float,
                            help="automatically stop after S seconds")
-    parser_tp.add_argument("-spr", action="store_true",
-                           help="suppress positive response")
     parser_tp.set_defaults(func=__tester_present_wrapper)
 
     # Parser for SecuritySeedDump
@@ -1059,6 +1104,14 @@ def __parse_args(args):
     parser_23.add_argument("addr", type=parse_int_dec_or_hex, help="memory address to read")
     parser_23.add_argument("len", type=parse_int_dec_or_hex, help="memory size to read")
     parser_23.set_defaults(func=service_23)
+
+    # Parser for read_memory
+    parser_read_memory = subparsers.add_parser("read_memory")
+    parser_read_memory.add_argument("src", type=parse_int_dec_or_hex, help="arbitration ID to transmit from")
+    parser_read_memory.add_argument("dst", type=parse_int_dec_or_hex, help="arbitration ID to listen to")
+    parser_read_memory.add_argument("filename", help="filename to save to")
+    parser_read_memory.add_argument("size", type=parse_int_dec_or_hex, help="memory size to read")
+    parser_read_memory.set_defaults(func=read_memory)
 
     # Parser for Service $27
     parser_27 = subparsers.add_parser("service_27")
