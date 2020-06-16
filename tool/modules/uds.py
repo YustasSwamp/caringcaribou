@@ -1,6 +1,6 @@
 from __future__ import print_function
 from lib.can_actions import auto_blacklist
-from lib.common import list_to_hex_str, parse_int_dec_or_hex
+from lib.common import list_to_hex_str, parse_int_dec_or_hex, int_list_to_ascii
 from lib.constants import ARBITRATION_ID_MAX, ARBITRATION_ID_MAX_EXTENDED
 from lib.constants import ARBITRATION_ID_MIN
 from lib.iso15765_2 import IsoTp
@@ -808,18 +808,26 @@ def send_key(arb_id_request, arb_id_response, level, key, timeout):
             return response
 
 
-def service_1a(args):
-    """
-    Read all Diagnostic IDs.
+def service_1a(send_arb_id, rcv_arb_id, min_id=BYTE_MIN, max_id=BYTE_MAX, timeout=TIMEOUT_SERVICES, print_results=False):
+    """Read GMLAN Diagnostic IDs.
+       Returns a map of found Diagnostic IDs and their data (as list of bytes).
 
-    :param args: A namespace containing src, dst
+    :param arb_id_request: arbitration ID for requests
+    :param arb_id_response: arbitration ID for responses
+    :param min_id: first diagnostic ID to scan
+    :param max_id: last diagnostic ID to scan
+    :param timeout: delay between each request sent
+    :param print_results: whether progress should be printed to stdout
+    :type arb_id_request: int
+    :type arb_id_response: int
+    :type min_id: int
+    :type max_id: int
+    :type timeout: float
+    :type print_results: bool
+    :return: map of found diagnostic IDs
+    :rtype {int: [int]}
     """
-    send_arb_id = args.src
-    rcv_arb_id = args.dst
-
-    found_dids = []
-    print_results = False
-    timeout = 1
+    found_dids = {}
 
     with IsoTp(arb_id_request=send_arb_id,
                arb_id_response=rcv_arb_id) as tp:
@@ -827,26 +835,36 @@ def service_1a(args):
         tp.set_filter_single_arbitration_id(rcv_arb_id)
         # Send requests
         with Iso14229_1(tp) as uds:
-            for did in range(BYTE_MIN, BYTE_MAX):
+            for did in range(min_id, max_id + 1):
                 if print_results:
                     print("\rProbing did 0x{0:02x} ({0}/{1}): found {2}"
-                          .format(did, BYTE_MAX, len(found_dids)),
+                          .format(did, max_id, len(found_dids)),
                           end="")
                 request = [0x1a, did]
                 uds.send_request(request)
                 response = uds.receive_response(timeout)
                 if not Iso14229_1.is_positive_response(response):
                     continue
-                value=''.join('{:02x}'.format(x) for x in response[2:])
-                text=''.join(map(chr,response[2:]))
-                valuestr=''.join([i if ord(i) > 20 and ord(i) < 128 else '.' for i in text])
-                if did in DIAG_IDS:
-                    d = DIAG_IDS[did]
-                else:
-                    d = "{0:2x}".format(did)
-                print("{0}: {1} '{2}'".format(d, value, valuestr))
+                found_dids[did] = response[2:]
             if print_results:
                 print("\nDone!\n")
+    return found_dids
+
+
+def __service_1a_wrapper(args):
+    """Wrapper used to initiate a service $1a"""
+    send_arb_id = args.src
+    rcv_arb_id = args.dst
+
+    found_dids = service_1a(send_arb_id, rcv_arb_id)
+
+    for k in found_dids.keys():
+        did = DIAG_IDS.get(k, "{0:2x}".format(k))
+        data = found_dids[k]
+        print("{0}: {1} '{2}'".format(did,
+                    list_to_hex_str(data),
+                    int_list_to_ascii(data)))
+
 
 def service_23(args):
     """
@@ -1095,7 +1113,7 @@ def __parse_args(args):
     parser_1a = subparsers.add_parser("service_1a")
     parser_1a.add_argument("src", type=parse_int_dec_or_hex, help="arbitration ID to transmit from")
     parser_1a.add_argument("dst", type=parse_int_dec_or_hex, help="arbitration ID to listen to")
-    parser_1a.set_defaults(func=service_1a)
+    parser_1a.set_defaults(func=__service_1a_wrapper)
 
     # Parser for Service $23
     parser_23 = subparsers.add_parser("service_23")

@@ -27,6 +27,22 @@ def str_to_int_list(s):
     return [int(s[i * 2:i * 2 + 2], 16) for i in range(len(s) // 2)]
 
 
+def int_list_to_ascii(l):
+    """Converts a list of bytes into a human readable ASCII string,
+    using .(dot) for non-printable characters.
+
+    Example:
+    int_list_to_ascii([01, 02, 0xc0, 0xff, 0xee, 0x41, 0x42]) -> ".....AB"
+
+    :param l: list of byte values
+    :type l: [int]
+    :return: string representation of ASCII data
+    :rtype: str
+    """
+    text=''.join(map(chr,l))
+    return ''.join([i if ord(i) > 20 and ord(i) < 128 else '.' for i in text])
+
+
 def int_from_byte_list(byte_values, start_index=0, length=None):
     """Parses a range of unsigned-up-to-8-bit-ints (bytes) from a list into a single int
 
