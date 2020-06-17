@@ -1,6 +1,6 @@
 from __future__ import print_function
 from lib.can_actions import auto_blacklist
-from lib.common import list_to_hex_str, parse_int_dec_or_hex, int_list_to_ascii
+from lib.common import list_to_hex_str, parse_int_dec_or_hex, int_list_to_ascii, int_from_byte_list
 from lib.constants import ARBITRATION_ID_MAX, ARBITRATION_ID_MAX_EXTENDED
 from lib.constants import ARBITRATION_ID_MIN
 from lib.iso15765_2 import IsoTp
@@ -655,9 +655,24 @@ def __ecu_reset_wrapper(args):
             print_negative_response(response)
 
 
+def get_negative_response(response):
+    """
+    Helper function for decoding a negative response received
+    from a UDS server.
+
+    :param response: Response data after CAN-TP layer has been removed
+    :type response: [int]
+
+    :return: str
+    """
+    nrc = response[2]
+    nrc_description = NRC_NAMES.get(nrc, "Unknown NRC value")
+    return "0x{0:02x}: {1}".format(nrc, nrc_description)
+
+
 def print_negative_response(response):
     """
-    Helper function for decoding and printing a negative response received
+    Helper function for printing a negative response received
     from a UDS server.
 
     :param response: Response data after CAN-TP layer has been removed
@@ -665,10 +680,8 @@ def print_negative_response(response):
 
     :return: Nothing
     """
-    nrc = response[2]
-    nrc_description = NRC_NAMES.get(nrc, "Unknown NRC value")
-    print("Received negative response code (NRC) 0x{0:02x}: {1}"
-          .format(nrc, nrc_description))
+    print("Received negative response code (NRC) {}"
+          .format(get_negative_response(response)))
 
 
 def __security_seed_wrapper(args):
@@ -694,8 +707,7 @@ def __security_seed_wrapper(args):
                 continue
 
             # Request seed
-            response = request_seed(arb_id_request, arb_id_response,
-                                    level, None, None)
+            response = request_seed(arb_id_request, arb_id_response, level)
             if response is None:
                 print("\nInvalid response")
             elif Iso14229_1.is_positive_response(response):
@@ -734,7 +746,7 @@ def extended_session(arb_id_request, arb_id_response, session_type):
 
 
 def request_seed(arb_id_request, arb_id_response, level,
-                 data_record, timeout):
+                 data_record=None, timeout=None):
     """Sends an Request seed message to 'arb_id_request'. Returns the
        first response received from 'arb_id_response' within 'timeout'
        seconds or None otherwise.
@@ -776,7 +788,7 @@ def request_seed(arb_id_request, arb_id_response, level,
             return response
 
 
-def send_key(arb_id_request, arb_id_response, level, key, timeout):
+def send_key(arb_id_request, arb_id_response, level, key, timeout=None):
     """
     Sends a Send key message to 'arb_id_request'.
     Returns the first response received from 'arb_id_response' within
@@ -943,33 +955,62 @@ def read_memory(args):
                     break
     f.close()
 
-def service_27(args):
+def service_27(send_arb_id, rcv_arb_id, key):
+    """Security access mode.
+
+    :param arb_id_request: arbitration ID for requests
+    :param arb_id_response: arbitration ID for responses
+    :param key: key to transmit
+    :type arb_id_request: int
+    :type arb_id_response: int
+    :type key: int or None
+    :return: if key is None: pair (int:seed, str:error message)
+             if key provided: (None, str:error message), or (None, None)
+    :rtype: pair (int, str) or (bool, str)
     """
-    Security access mode.
+    """
 
     :param args: A namespace containing src, dst
     """
-    send_arb_id = args.src
-    rcv_arb_id = args.dst
-    timeout = 1
-    # Request seed
-    response = request_seed(send_arb_id, rcv_arb_id, 1, None, timeout)
+    if key:
+        key_data = [(key >> 8) & 0xff, key & 0xff]
+        response = send_key(send_arb_id, rcv_arb_id, 2, key_data)
+        if response is None:
+            return (None, "Timeout")
+        if Iso14229_1.is_positive_response(response):
+            return (None, None)
+        else:
+            return (None, get_negative_response(response))
+
+    # No key provided - request seed
+    response = request_seed(send_arb_id, rcv_arb_id, 1)
     if response is None:
-        print("Timeout")
+        return (None, "Timeout")
     elif Iso14229_1.is_positive_response(response):
         if response[0] == 0x67 and response[1] == 0x01:
-            print("Seed: {0}".format(list_to_hex_str(response[2:], "")))
-            if args.key != -1:
-                print("Key to send {0:04x}".format(args.key))
-                key = [(args.key >> 8) & 0xff, args.key & 0xff]
-                response = send_key(send_arb_id, rcv_arb_id, 2, key, timeout)
-                if Iso14229_1.is_positive_response(response):
-                    print("Security access granted!")
-                else:
-                    print_negative_response(response)
+            seed = int_from_byte_list(response[2:])
+            return (seed, None)
+        else:
+            return (None, "Unknown response {}".format(list_to_hex_str(response, " ")))
     else:
         # Negative response handling
-        print_negative_response(response)
+        return (None, get_negative_response(response))
+
+
+def __service_27_wrapper(args):
+    """Wrapper for service $27"""
+    send_arb_id = args.src
+    rcv_arb_id = args.dst
+    key = args.key
+    (s, e) = service_27(send_arb_id, rcv_arb_id, key)
+    if e:
+        print("Error: {}".format(e))
+        return
+
+    if key:
+        print("Security access granted!")
+    else:
+        print("Seed: 0x{0:04x}".format(s))
 
 
 def __parse_args(args):
@@ -1144,8 +1185,8 @@ def __parse_args(args):
     parser_27 = subparsers.add_parser("service_27")
     parser_27.add_argument("src", type=parse_int_dec_or_hex, help="arbitration ID to transmit from")
     parser_27.add_argument("dst", type=parse_int_dec_or_hex, help="arbitration ID to listen to")
-    parser_27.add_argument("-key", type=parse_int_dec_or_hex, default=-1, help="key to respond")
-    parser_27.set_defaults(func=service_27)
+    parser_27.add_argument("-key", type=parse_int_dec_or_hex, default=None, help="key to respond")
+    parser_27.set_defaults(func=__service_27_wrapper)
 
     args = parser.parse_args(args)
     return args
