@@ -502,7 +502,7 @@ def __service_discovery_wrapper(args):
               .format(service_id, service_name))
 
 
-def tester_present(arb_id_request, delay, duration):
+def tester_present(arb_id_request, delay, duration, stop_cb=None, print_results=True):
     """Sends TesterPresent messages to 'arb_id_request'. Stops automatically
     after 'duration' seconds or runs forever if this is None.
 
@@ -510,9 +510,14 @@ def tester_present(arb_id_request, delay, duration):
     :param delay: seconds between each request
     :param duration: seconds before automatically stopping, or None to
                      continue forever
+    :param stop_cb: callback function returning True signaling that
+                    execution should be stopped (threading friendly)
+    :param print_results: whether progress should be printed to stdout
     :type arb_id_request: int
     :type delay: float
     :type duration: float or None
+    :type stop_cb: bool ()
+    :type print_results: bool
     """
     # Calculate end timestamp if the TesterPresent should automatically
     # stop after a given duration
@@ -524,18 +529,22 @@ def tester_present(arb_id_request, delay, duration):
 
     service_id = Services.TesterPresent.service_id
     message_data = [service_id]
-    print("Sending TesterPresent to arbitration ID {0} (0x{0:02x})"
-          .format(arb_id_request))
-    print("\nPress Ctrl+C to stop\n")
-    with IsoTp(arb_id_request, None) as can_wrap:
+    if print_results:
+        print("Sending TesterPresent to arbitration ID {0} (0x{0:02x})"
+              .format(arb_id_request))
+        print("\nPress Ctrl+C to stop\n")
         counter = 1
+    with IsoTp(arb_id_request, None) as can_wrap:
         while True:
             can_wrap.send_request(message_data)
-            print("\rCounter:", counter, end="")
-            stdout.flush()
+            if print_results:
+                print("\rCounter:", counter, end="")
+                stdout.flush()
+                counter += 1
             time.sleep(delay)
-            counter += 1
             if auto_stop and datetime.datetime.now() >= end_time:
+                break
+            if stop_cb and stop_cb():
                 break
 
 
