@@ -914,20 +914,28 @@ def service_23(args):
                 else:
                     print_negative_response(response)
 
-def read_memory(args):
+def read_memory(send_arb_id, rcv_arb_id, filename, addr, size, addr_bytes=4, tester_present=False):
+    """Read memory by address.
+
+    :param send_arb_id: arbitration ID for requests
+    :param rcv_arb_id: arbitration ID for responses
+    :param filename: file name to save to
+    :param addr: start address
+    :param size: number of bytes
+    :param addr_bytes: number of bytes to represent memory address
+                       acceptable values are 2, 3 or 4
+    :param tester_present: whether or not to sent $3e message
+    :type send_arb_id: int
+    :type rcv_arb_id: int
+    :type filename: str
+    :type addr: int
+    :type size: int
+    :type tester_present: bool
     """
-    Read memory by address.
 
-    :param args: A namespace containing src, dst
-    """
-    send_arb_id = args.src
-    rcv_arb_id = args.dst
-    filename = args.filename
-    size = args.size
-    addr = 0
+    next_tp = datetime.datetime.now()
 
-    timeout = 3
-
+    end = addr + size
     f= open(filename,"wb")
     with IsoTp(arb_id_request=send_arb_id,
                arb_id_response=rcv_arb_id) as tp:
@@ -935,34 +943,53 @@ def read_memory(args):
         tp.set_filter_single_arbitration_id(rcv_arb_id)
         # Send requests
         with Iso14229_1(tp) as uds:
-            while addr < size:
+            while addr < end:
+                if tester_present and datetime.datetime.now() > next_tp:
+                    uds.send_request([Services.TesterPresent.service_id])
+                    response = uds.receive_response(uds.P3_CLIENT)
+                    if response != [0x40 | Services.TesterPresent.service_id]:
+                        print("Incorrect tester present response received: {}".format(list_to_hex_str(response, " ")))
+                        break
+                    next_tp = datetime.datetime.now() + datetime.timedelta(seconds=2)
+
                 n = 16 - (addr & 0xf)
-                request = [0x23, (addr >> 24) & 0xff, (addr >> 16) & 0xff, (addr >> 8) & 0xff, addr & 0xff, 0, n]
+                request = [0x23, *[addr>>((addr_bytes-i-1)*8)&0xff for i in range(0,addr_bytes)], 0, n]
                 uds.send_request(request)
                 response = uds.receive_response(uds.P3_CLIENT)
                 if Iso14229_1.is_positive_response(response):
                     if (addr & 0xff == 0):
-                        print("{0:x}".format(addr))
+                        print("  Reading 0x{0:x} ({1:3.1f}%)\r".format(addr, 100 - (end - addr) * 100 / size), end="")
+                        stdout.flush()
                     ba=bytearray(response[5:])
                     f.write(ba)
                     addr = addr + len(ba)
                 else:
                     if response != None:
-#                        if response[2] == NegativeResponseCodes.REQUEST_CORRECTLY_RECEIVED_RESPONSE_PENDING:
-#                            time.sleep(0.1)
-#                            continue
                         print_negative_response(response)
                     break
     f.close()
+    return addr == end
+
+
+def __read_memory_wrapper(args):
+    """Wrapper for read_memory (service $23)"""
+    send_arb_id = args.src
+    rcv_arb_id = args.dst
+    filename = args.filename
+    addr = args.addr
+    size = args.size
+    tp = args.tester_present
+    read_memory(send_arb_id, rcv_arb_id, filename, addr, size, tester_present=tp)
+
 
 def service_27(send_arb_id, rcv_arb_id, key):
     """Security access mode.
 
-    :param arb_id_request: arbitration ID for requests
-    :param arb_id_response: arbitration ID for responses
+    :param send_arb_id: arbitration ID for requests
+    :param rcv_arb_id: arbitration ID for responses
     :param key: key to transmit
-    :type arb_id_request: int
-    :type arb_id_response: int
+    :type send_arb_id: int
+    :type rcv_arb_id: int
     :type key: int or None
     :return: if key is None: pair (int:seed, str:error message)
              if key provided: (None, str:error message), or (None, None)
@@ -1178,8 +1205,11 @@ def __parse_args(args):
     parser_read_memory.add_argument("src", type=parse_int_dec_or_hex, help="arbitration ID to transmit from")
     parser_read_memory.add_argument("dst", type=parse_int_dec_or_hex, help="arbitration ID to listen to")
     parser_read_memory.add_argument("filename", help="filename to save to")
+    parser_read_memory.add_argument("addr", type=parse_int_dec_or_hex, help="memory address to start reading from")
     parser_read_memory.add_argument("size", type=parse_int_dec_or_hex, help="memory size to read")
-    parser_read_memory.set_defaults(func=read_memory)
+    parser_read_memory.add_argument("-tp", "--tester-present", action="store_true",
+                                    help="send tester present message during operation")
+    parser_read_memory.set_defaults(func=__read_memory_wrapper)
 
     # Parser for Service $27
     parser_27 = subparsers.add_parser("service_27")
